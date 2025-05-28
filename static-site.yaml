@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Static Website Hosting using S3 + CloudFront + Route53
+
+Parameters:
+  DomainName:
+    Type: String
+    Description: The domain name (e.g., example.com)
+  HostedZoneId:
+    Type: String
+    Description: Route 53 Hosted Zone ID
+  AcmCertificateArn:
+    Type: String
+    Description: ARN of the ACM certificate in us-east-1 for HTTPS
+
+Resources:
+
+  WebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${DomainName}"
+      WebsiteConfiguration:
+        IndexDocument: index.html
+      AccessControl: PublicRead
+    DeletionPolicy: Delete
+
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebsiteBucket
+      PolicyDocument:
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: "*"
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${DomainName}/*"
+
+  WebsiteContent:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${DomainName}-content"
+    DeletionPolicy: Delete
+
+  WebsiteContentUpload:
+    Type: Custom::S3PutObject
+    DependsOn: WebsiteBucket
+    Properties:
+      ServiceToken: !GetAtt S3PutObjectFunction.Arn
+      Bucket: !Ref WebsiteBucket
+      Key: index.html
+      Content: |
+        <!DOCTYPE html>
+        <html>
+        <head><title>Hello World</title></head>
+        <body><h1>Hello World</h1></body>
+        </html>
+      ContentType: text/html
+
+  S3PutObjectFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.9
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          def handler(event, context):
+              s3 = boto3.client('s3')
+              bucket = event['ResourceProperties']['Bucket']
+              key = event['ResourceProperties']['Key']
+              content = event['ResourceProperties']['Content']
+              content_type = event['ResourceProperties'].get('ContentType', 'text/plain')
+              s3.put_object(Bucket=bucket, Key=key, Body=content.encode(), ContentType=content_type)
+              return { "Status": "SUCCESS" }
+  
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaS3PutObject
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource: !Sub "arn:aws:s3:::${DomainName}/*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Aliases:
+          - !Ref DomainName
+        ViewerCertificate:
+          AcmCertificateArn: !Ref AcmCertificateArn
+          SslSupportMethod: sni-only
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt WebsiteBucket.DomainName
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          ForwardedValues:
+            QueryString: false
+
+  Route53Record:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2  # This is the hosted zone ID for CloudFront

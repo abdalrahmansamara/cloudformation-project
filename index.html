@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AWS Static Website Project</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2rem;
+      line-height: 1.6;
+      max-width: 700px;
+    }
+    pre {
+      background: #f4f4f4;
+      padding: 1rem;
+      border-radius: 5px;
+      overflow-x: auto;
+    }
+    a {
+      color: #1a73e8;
+    }
+  </style>
+</head>
+<body>
+  <h1>Project Submission</h1>
+
+  <h2>CloudFormation Template</h2>
+  <p>This is the code to Host a static "Hello World" site on S3 + CloudFront with HTTPS and Route 53</p>
+  <p>
+    <a href="static-site.yaml" target="_blank">static-site.yaml</a>
+  </p>
+
+  <h2>Steps to Deploy the CloudFormation Stack</h2>
+  <p>Use the AWS CLI to deploy the static website infrastructure on AWS:</p>
+
+  <ol>
+    <li><strong>Ensure you have AWS CLI installed and configured</strong> with appropriate permissions. <br />
+    </li>
+
+    <li><strong>Create an ACM certificate</strong> in <code>us-east-1</code> for your domain using AWS Certificate Manager.<br />
+    </li>
+
+    <li><strong>Note your domain name and Route 53 Hosted Zone ID</strong>.<br />
+      This can be fetched from the AWS Route 53 console.
+    </li>
+
+    <li><strong>Download this CloudFormation template file</strong> (<a href="static-site.yaml" target="_blank">static-site.yaml</a>) to your local machine.</li>
+
+    <li><strong>Run the deploy command</strong> (replace parameters below with your actual values):</li>
+  </ol>
+
+  <pre>
+aws cloudformation deploy \
+  --template-file static-site.yaml \
+  --stack-name StaticWebsiteStack \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides \
+    DomainName=yourdomain.com \
+    HostedZoneId=Z3P5QSUBK4POTI \
+    AcmCertificateArn=arn:aws:acm:us-east-1:123456789012:certificate/abcdefg-1234-5678-abcd-1234abcd5678
+  </pre>
+
+  <p>Once deployed, the static website will be live on your custom domain with HTTPS enabled!</p>
+
+</body>
+</html>
